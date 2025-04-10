@@ -1,21 +1,10 @@
-// DashDev.jsx
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import { ResponsiveContainer, RadialBarChart, RadialBar } from "recharts";
-import { Droppable, DragDropContext, Draggable } from "react-beautiful-dnd";
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { SortableItem } from './components/SortableItem';
 import { Bell, UserCircle, Menu } from "lucide-react";
-
-//const tasksData = {
-//  pending: [
-//    { id: "1", type: "High", title: "Fix login error", description: "Login fails with wrong token response" },
-//  ],
-//  doing: [
-//    { id: "2", type: "Medium", title: "Implement Kanban UI", description: "Drag and drop cards between columns" },
-//  ],
-//  done: [
-//    { id: "3", type: "Low", title: "Dark theme applied", description: "Oracle dark mode UI setup complete" },
-//  ],
-//};
 
 const tagColors = {
   High: "bg-red-600",
@@ -23,71 +12,159 @@ const tagColors = {
   Low: "bg-green-600",
 };
 
+const columnMap = {
+  pending: 1,
+  doing: 2,
+  done: 3,
+};
+
 const DashDev = () => {
-  const [tasks, setTasks] = useState(( { pending: [], doing: [], done: [] }));
+  const [tasks, setTasks] = useState({ pending: [], doing: [], done: [] });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [activeId, setActiveId] = useState(null);
 
-  useEffect(() => {
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const fetchTasks = useCallback(async () => {
     const userId = localStorage.getItem("userId");
-    if (!userId) return;
+    if (!userId) {
+      setIsLoading(false);
+      return;
+    }
 
-    fetch(`http://140.84.190.203/TareasUsuario/${userId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        const Tasks = data
-        const newTasks = { pending: [], doing: [], done: [] };
+    try {
+      const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
+      if (!response.ok) throw new Error("Error en la respuesta del servidor");
+      
+      const data = await response.json();
+      const newTasks = { pending: [], doing: [], done: [] };
 
-        data.forEach((task) => {
-          const formattedTask = {
-            id: String(task.idTarea),
-            type:
-              task.prioridad === 1
-                ? "Low"
-                : task.prioridad === 2
-                ? "Medium"
-                : "High",
-            title: task.nombre,
-            description: task.descripcion,
-          };
+      data.forEach((task) => {
+        const formattedTask = {
+          id: `task-${task.idTarea}`,
+          rawId: task.idTarea,
+          type: task.prioridad === 1 ? "Low" : task.prioridad === 2 ? "Medium" : "High",
+          title: task.nombre,
+          description: task.descripcion,
+          idColumna: task.idColumna,
+          idEncargado: task.idEncargado,
+          idProyecto: task.idProyecto,
+          idSprint: task.idSprint,
+          fechaInicio: task.fechaInicio,
+          fechaVencimiento: task.fechaVencimiento,
+          prioridad: task.prioridad
+        };
 
-          if (task.idColumna === 1) newTasks.pending.push(formattedTask);
-          else if (task.idColumna === 2) newTasks.doing.push(formattedTask);
-          else if (task.idColumna === 3) newTasks.done.push(formattedTask);
-        });
+        if (task.idColumna === 1) newTasks.pending.push(formattedTask);
+        else if (task.idColumna === 2) newTasks.doing.push(formattedTask);
+        else if (task.idColumna === 3) newTasks.done.push(formattedTask);
+      });
 
-        setTasks(newTasks);
-      })
-      .catch((err) => console.error("❌ Error cargando tareas:", err));
+      setTasks(newTasks);
+    } catch (err) {
+      console.error("❌ Error cargando tareas:", err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const onDragEnd = (result) => {
-    const { source, destination } = result;
-    if (!destination) return;
+  useEffect(() => {
+    fetchTasks();
+  }, [fetchTasks]);
 
-    const sourceCol = source.droppableId;
-    const destCol = destination.droppableId;
-
-    const newSourceTasks = Array.from(tasks[sourceCol]);
-    const [removed] = newSourceTasks.splice(source.index, 1);
-    const newDestTasks = Array.from(tasks[destCol]);
-    newDestTasks.splice(destination.index, 0, removed);
-
-    setTasks({
-      ...tasks,
-      [sourceCol]: newSourceTasks,
-      [destCol]: newDestTasks,
-    });
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
   };
 
-  const progress = Math.round(
-    (tasks.done.length /
-      (tasks.pending.length + tasks.doing.length + tasks.done.length)) *
-      100
-  );
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    // Encontrar columnas de origen y destino
+    let sourceColumn, destinationColumn;
+    Object.entries(tasks).forEach(([column, items]) => {
+      if (items.some(item => item.id === active.id)) sourceColumn = column;
+      if (items.some(item => item.id === over.id)) destinationColumn = column;
+    });
+
+    if (!sourceColumn || !destinationColumn) return;
+
+    // Mover la tarea en el estado local (actualización optimista)
+    const sourceItems = [...tasks[sourceColumn]];
+    const taskIndex = sourceItems.findIndex(item => item.id === active.id);
+    const [movedTask] = sourceItems.splice(taskIndex, 1);
+    
+    const updatedTask = { 
+      ...movedTask, 
+      idColumna: columnMap[destinationColumn] 
+    };
+
+    const destItems = [...tasks[destinationColumn]];
+    destItems.splice(destItems.findIndex(item => item.id === over.id), 0, updatedTask);
+
+    const newTasks = {
+      ...tasks,
+      [sourceColumn]: sourceItems,
+      [destinationColumn]: destItems
+    };
+    setTasks(newTasks);
+
+    // Actualización en el backend usando PUT
+    try {
+      const userId = localStorage.getItem("userId");
+      const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          idTarea: movedTask.rawId,
+          idColumna: columnMap[destinationColumn],
+          idEncargado: movedTask.idEncargado,
+          idProyecto: movedTask.idProyecto,
+          idSprint: movedTask.idSprint,
+          nombre: movedTask.title,
+          descripcion: movedTask.description,
+          fechaInicio: movedTask.fechaInicio,
+          fechaVencimiento: movedTask.fechaVencimiento,
+          prioridad: movedTask.prioridad === "High" ? 3 : movedTask.prioridad === "Medium" ? 2 : 1
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Error al actualizar tarea");
+      }
+
+      console.log("✅ Tarea actualizada correctamente");
+    } catch (error) {
+      console.error("❌ Error al actualizar tarea:", error.message);
+      // Revertir cambios si falla
+      setTasks(prevTasks => ({
+        ...prevTasks,
+        [sourceColumn]: [...prevTasks[sourceColumn], movedTask],
+        [destinationColumn]: prevTasks[destinationColumn].filter(t => t.id !== movedTask.id)
+      }));
+    }
+  };
+
+  const totalTasks = tasks.pending.length + tasks.doing.length + tasks.done.length;
+  const progress = totalTasks > 0 ? Math.round((tasks.done.length / totalTasks) * 100) : 0;
+
+  if (isLoading) {
+    return <div className="text-white text-center mt-10">Cargando tareas...</div>;
+  }
 
   return (
     <div className="flex flex-col md:flex-row h-screen bg-[#1a1a1a]">
-      {/* Botón solo visible en móvil */}
       <button
         className="md:hidden fixed top-4 left-4 z-50 text-white"
         onClick={() => setIsMobileOpen(true)}
@@ -95,12 +172,11 @@ const DashDev = () => {
         <Menu size={28} />
       </button>
 
-
       <Sidebar isMobileOpen={isMobileOpen} closeMobile={() => setIsMobileOpen(false)} />
 
       <div className="flex-1 px-4 md:px-6 lg:px-8 overflow-y-auto">
-      <header className="flex flex-wrap items-center justify-between py-4 gap-4">
-      <h1 className="text-white text-2xl font-semibold">Dashboard</h1>
+        <header className="flex flex-wrap items-center justify-between py-4 gap-4">
+          <h1 className="text-white text-2xl font-semibold">Dashboard</h1>
           <div className="flex flex-wrap gap-3 items-center">
             <select className="bg-[#2a2a2a] text-white rounded px-4 py-2 text-sm">
               <option>Select a Project</option>
@@ -121,61 +197,52 @@ const DashDev = () => {
           </div>
         </header>
 
-        <DragDropContext onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
           <main className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {Object.entries(tasks).map(([key, items]) => (
+            {Object.entries(tasks).map(([columnId, columnTasks]) => (
               <section
-                key={key}
+                key={columnId}
                 className="bg-[#2a2a2a] text-white rounded-lg p-4 flex flex-col"
               >
                 <h2 className="text-lg font-semibold mb-2 capitalize">
-                  {key}
+                  {columnId} ({columnTasks.length})
                 </h2>
-                <Droppable droppableId={key}>
-                  {(provided) => (
-                    <div
-                      {...provided.droppableProps}
-                      ref={provided.innerRef}
-                      className="space-y-3 flex-1"
-                    >
-                      {items.map((task, index) => (
-                        <Draggable
-                          key={task.id}
-                          draggableId={task.id}
-                          index={index}
-                        >
-                          {(provided) => (
-                            <div
-                              {...provided.draggableProps}
-                              {...provided.dragHandleProps}
-                              ref={provided.innerRef}
-                              className="bg-[#1a1a1a] rounded-lg p-4 shadow-md border border-neutral-700"
-                            >
-                              <span
-                                className={`text-xs px-2 py-1 rounded-full text-white ${tagColors[task.type]}`}
-                              >
-                                {task.type}
-                              </span>
-                              <h3 className="font-semibold text-white mt-2">
-                                {task.title}
-                              </h3>
-                              <p className="text-sm text-gray-400">
-                                {task.description}
-                              </p>
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
+                <SortableContext
+                  items={columnTasks}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-3 flex-1 min-h-[100px]">
+                    {columnTasks.map((task) => (
+                      <SortableItem key={task.id} id={task.id}>
+                        <div className="bg-[#1a1a1a] rounded-lg p-4 shadow-md border border-neutral-700">
+                          <span className={`text-xs px-2 py-1 rounded-full text-white ${tagColors[task.type]}`}>
+                            {task.type}
+                          </span>
+                          <h3 className="font-semibold text-white mt-2">
+                            {task.title}
+                          </h3>
+                          <p className="text-sm text-gray-400">
+                            {task.description}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-2">
+                            {new Date(task.fechaVencimiento).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </SortableItem>
+                    ))}
+                  </div>
+                </SortableContext>
               </section>
             ))}
 
             <section className="bg-[#2a2a2a] text-white rounded-lg p-4">
               <h2 className="text-lg font-semibold mb-2">Progress</h2>
-              <div className="w-full flex items-center justify-center mb-4">
+              <div className="w-full flex items-center justify-center mb-4 relative">
                 <ResponsiveContainer width="100%" height={120}>
                   <RadialBarChart
                     innerRadius="70%"
@@ -205,7 +272,7 @@ const DashDev = () => {
               </div>
             </section>
           </main>
-        </DragDropContext>
+        </DndContext>
       </div>
     </div>
   );
