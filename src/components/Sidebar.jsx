@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Folder,
   LogOut,
+  FileChartPie,
   User,
 } from "lucide-react";
 import taskoLogo from "../Assets/tasko.png";
@@ -11,6 +12,7 @@ import taskoLogo from "../Assets/tasko.png";
 const navItems = [
   { icon: <LayoutDashboard size={20} />, label: "Dashboard" },
   { icon: <Folder size={20} />, label: "Backlog" },
+  { icon: <FileChartPie size={20} />, label: "Analytics" },
   { icon: <User size={20} />, label: "Profile" },
   { icon: <LogOut size={20} />, label: "Logout" },
 ];
