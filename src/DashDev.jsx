@@ -5,6 +5,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { SortableItem } from './components/SortableItem';
 import { Bell, UserCircle, Menu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const tagColors = {
   High: "bg-red-600",
@@ -19,6 +20,7 @@ const columnMap = {
 };
 
 const DashDev = () => {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState({ pending: [], doing: [], done: [] });
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,19 +34,27 @@ const DashDev = () => {
   );
 
   const fetchTasks = useCallback(async () => {
-    const userId = localStorage.getItem("userId");
+    // Obtener datos completos del usuario
+    const userData = JSON.parse(localStorage.getItem("userData"));
+    const userId = userData?.id;
+  
     if (!userId) {
-      setIsLoading(false);
+      console.error("No se encontró ID de usuario");
+      navigate("/login");
       return;
     }
-
+  
     try {
-      const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
-      if (!response.ok) throw new Error("Error en la respuesta del servidor");
+      const response = await fetch(`http://160.34.212.100/pruebas/TareasUsuario/${userId}`);
       
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Error al cargar tareas");
+      }
+  
       const data = await response.json();
       const newTasks = { pending: [], doing: [], done: [] };
-
+  
       data.forEach((task) => {
         const formattedTask = {
           id: `task-${task.idTarea}`,
@@ -60,19 +70,24 @@ const DashDev = () => {
           fechaVencimiento: task.fechaVencimiento,
           prioridad: task.prioridad
         };
-
+  
         if (task.idColumna === 1) newTasks.pending.push(formattedTask);
         else if (task.idColumna === 2) newTasks.doing.push(formattedTask);
         else if (task.idColumna === 3) newTasks.done.push(formattedTask);
       });
-
+  
       setTasks(newTasks);
     } catch (err) {
-      console.error("❌ Error cargando tareas:", err);
+      console.error("Error cargando tareas:", err);
+      
+      // Redirigir a login si el error es 401 (No autorizado)
+      if (err.message.includes("401")) {
+        navigate("/login");
+      }
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     fetchTasks();
@@ -85,19 +100,19 @@ const DashDev = () => {
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
-
+  
     if (!over || active.id === over.id) return;
-
-    // Encontrar columnas de origen y destino
+  
+    // 1. Identificar columnas involucradas
     let sourceColumn, destinationColumn;
     Object.entries(tasks).forEach(([column, items]) => {
       if (items.some(item => item.id === active.id)) sourceColumn = column;
       if (items.some(item => item.id === over.id)) destinationColumn = column;
     });
-
+  
     if (!sourceColumn || !destinationColumn) return;
-
-    // Mover la tarea en el estado local (actualización optimista)
+  
+    // 2. Actualización optimista en el estado local
     const sourceItems = [...tasks[sourceColumn]];
     const taskIndex = sourceItems.findIndex(item => item.id === active.id);
     const [movedTask] = sourceItems.splice(taskIndex, 1);
@@ -106,45 +121,43 @@ const DashDev = () => {
       ...movedTask, 
       idColumna: columnMap[destinationColumn] 
     };
-
+  
     const destItems = [...tasks[destinationColumn]];
     destItems.splice(destItems.findIndex(item => item.id === over.id), 0, updatedTask);
-
-    const newTasks = {
+  
+    setTasks({
       ...tasks,
       [sourceColumn]: sourceItems,
       [destinationColumn]: destItems
-    };
-    setTasks(newTasks);
-
-    // Actualización en el backend usando PUT
+    });
+  
+    // 3. Actualización en el backend usando el endpoint correcto
     try {
-      const userId = localStorage.getItem("userId");
-      const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`, {
-        method: "PUT",
+      const response = await fetch(`http://160.34.212.100/pruebas/updateTarea/${movedTask.rawId}`, {
+        method: "PUT", // Usando PUT como especifica tu @PutMapping
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           idTarea: movedTask.rawId,
           idColumna: columnMap[destinationColumn],
-          idEncargado: movedTask.idEncargado,
-          idProyecto: movedTask.idProyecto,
-          idSprint: movedTask.idSprint,
           nombre: movedTask.title,
           descripcion: movedTask.description,
-          fechaInicio: movedTask.fechaInicio,
-          fechaVencimiento: movedTask.fechaVencimiento,
-          prioridad: movedTask.prioridad === "High" ? 3 : movedTask.prioridad === "Medium" ? 2 : 1
+          prioridad: movedTask.prioridad === "High" ? 3 : 
+                   movedTask.prioridad === "Medium" ? 2 : 1,
+          idEncargado: movedTask.idEncargado,
+          idProyecto: movedTask.idProyecto,
+          // Incluye todos los campos que tu entidad Tarea requiere
         }),
       });
-
+  
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Error al actualizar tarea");
       }
-
-      console.log("✅ Tarea actualizada correctamente");
+  
+      const updatedData = await response.json();
+      console.log("✅ Tarea actualizada:", updatedData);
     } catch (error) {
       console.error("❌ Error al actualizar tarea:", error.message);
       // Revertir cambios si falla

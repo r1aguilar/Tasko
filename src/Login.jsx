@@ -2,32 +2,46 @@ import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, Lock } from "lucide-react";
+//import bcrypt from "bcryptjs"; 
 
 const LoginScreen = () => {
   const navigate = useNavigate();
   const [emailOrPhone, setEmailOrPhone] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  //const [isLoading, setIsLoading] = useState(false);
+  //160.34.212.100
 
   const handleLogin = async () => {
     const isEmail = emailOrPhone.includes("@");
+    
+    // Lógica para determinar qué contraseña enviar
+    let passwordToSend;
+    if (password === 'admin') {
+      passwordToSend = '$2a$12$94Fmc41Em5pPymRMfk.wjObvXttvu/aDE/4aGl4SQ8ZCOGWzL6h3G'; // Hash para admin
+    } else if (password === '123') {
+      passwordToSend = '$2a$12$E7.M6ukX3OAN3f1WixuGru6RGoHr.QI5mAZ77Uyjs3bYOjLD5VFLG'; // Hash para developer
+    } else {
+      passwordToSend = password; // Para otros casos (si existen)
+    }
+
     const url = isEmail
-      ? `http://140.84.190.203/login/email/${emailOrPhone}/${password}`
-      : `http://140.84.190.203/login/${emailOrPhone}/${password}`;
-  
+      ? `http://160.34.212.100/pruebas/login/email/${encodeURIComponent(emailOrPhone)}/${encodeURIComponent(passwordToSend)}`
+      : `http://160.34.212.100/pruebas/login/${encodeURIComponent(emailOrPhone)}/${encodeURIComponent(passwordToSend)}`;
+
     try {
       const response = await fetch(url);
       console.log("🌐 Llamando a:", url);
-  
+
       if (!response.ok) {
         console.log("❌ Usuario no encontrado");
-        setErrorMsg("User not found.");
+        setErrorMsg("Usuario o contraseña incorrectos");
         return;
       }
-  
+
       const data = await response.json();
       console.log("📦 Datos recibidos:", data);
-  
+
       // Redirecciones según tipo de usuario
       if (data.manager === false) {
         localStorage.setItem("userId", data.id);
@@ -35,19 +49,19 @@ const LoginScreen = () => {
         navigate("/dashdev");
       } else if (data.manager === true) {
         localStorage.setItem("userId", data.id);
-        console.log("👨‍💼 Admin/Manager → /backlogMan");
-        navigate("/backlogMan");
+        console.log("👨‍💼 Admin/Manager → /analytics");
+        navigate("/analytics");
       } else {
         console.log("🚫 Usuario sin permisos");
-        setErrorMsg("No access for this user.");
+        setErrorMsg("No tienes acceso permitido");
       }
-  
+
     } catch (error) {
       console.error("💥 Error conectando con backend:", error);
-      setErrorMsg("Server error.");
+      setErrorMsg("Error del servidor. Intenta nuevamente");
     }
   };
-  
+
   return (
     <motion.div
       className="min-h-screen flex items-center justify-center bg-gradient-to-br from-black to-gray-900 text-white px-4 sm:px-6 md:px-8"
