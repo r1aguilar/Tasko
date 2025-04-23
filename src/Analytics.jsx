@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
-import { ResponsiveContainer, RadialBarChart, RadialBar, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
+import { ResponsiveContainer, RadialBarChart, RadialBar, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, LineChart, Line, Legend } from "recharts";
 import { Bell, UserCircle, Menu } from "lucide-react";
 
 const AnalyticsManager = () => {
@@ -19,16 +19,45 @@ const AnalyticsManager = () => {
     { name: "Sprint5", date: "Mar 15, 2024", status: "Pending", progress: 0 },
   ];
 
- useEffect(() => {
+  useEffect(() => {
+    const useMock = false; 
+  
     const fetchTasks = async () => {
-      const userId = localStorage.getItem("userId");
-      if (!userId) return;
-
-      try {
-        const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
-        const data = await response.json();
-
-        const formatted = data.map((task) => ({
+      if (useMock) {
+        // Simular userId local
+        if (!localStorage.getItem("userId")) {
+          localStorage.setItem("userId", "mockUser123");
+        }
+  
+        // Datos simulados
+        const mockData = [
+          {
+            nombre: "Crear base de datos",
+            idSprint: 1,
+            horasEstimadas: 4,
+            horasReales: 5,
+            idColumna: 3,
+            nombreEncargado: "Dora"
+          },
+          {
+            nombre: "Diseñar interfaz",
+            idSprint: 1,
+            horasEstimadas: 6,
+            horasReales: 6,
+            idColumna: 2,
+            nombreEncargado: "Daniela"
+          },
+          {
+            nombre: "Configurar servidor",
+            idSprint: 2,
+            horasEstimadas: 5,
+            horasReales: 4,
+            idColumna: 1,
+            nombreEncargado: "Dora"
+          }
+        ];
+  
+        const formatted = mockData.map((task) => ({
           name: task.nombre,
           sprint: `Sprint${task.idSprint}`,
           estimatedhours: task.horasEstimadas || 0,
@@ -38,15 +67,37 @@ const AnalyticsManager = () => {
             task.idColumna === 2 ? "Doing" : "Done",
           user: task.nombreEncargado || "Developer",
         }));
-
+  
         setAllTasks(formatted);
-      } catch (err) {
-        console.error("Error fetching tasks:", err);
+      } else {
+        const userId = localStorage.getItem("userId");
+        if (!userId) return;
+  
+        try {
+          const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
+          const data = await response.json();
+  
+          const formatted = data.map((task) => ({
+            name: task.nombre,
+            sprint: `Sprint${task.idSprint}`,
+            estimatedhours: task.horasEstimadas || 0,
+            realhours: task.horasReales || 0,
+            status:
+              task.idColumna === 1 ? "Pending" :
+              task.idColumna === 2 ? "Doing" : "Done",
+            user: task.nombreEncargado || "Developer",
+          }));
+  
+          setAllTasks(formatted);
+        } catch (err) {
+          console.error("Error fetching tasks:", err);
+        }
       }
     };
-
+  
     fetchTasks();
   }, []);
+  
 
   const sprintTasks = allTasks.filter(t => t.sprint === selectedSprint);
   const filteredTasks = selectedFilter === "ALL"
@@ -99,6 +150,16 @@ const AnalyticsManager = () => {
 
   const sprintOptions = [...new Set(allTasks.map(task => task.sprint))];
 
+  const hoursPerDeveloper = {};
+  sprintTasks.forEach(task => {
+    if (!hoursPerDeveloper[task.user]) {
+      hoursPerDeveloper[task.user] = { name: task.user, estimated: 0, real: 0 };
+    }
+    hoursPerDeveloper[task.user].estimated += task.estimatedhours;
+    hoursPerDeveloper[task.user].real += task.realhours;
+  });
+  const hoursComparisonByDeveloper = Object.values(hoursPerDeveloper);
+  
 
   return (
     <div className="flex h-screen bg-[#1a1a1a]">
@@ -291,7 +352,7 @@ const AnalyticsManager = () => {
                 </tbody>
               </table>
               <div className="w-full flex items-center justify-center mb-4 relative">
-              <ResponsiveContainer width="90%" height={200}>
+              <ResponsiveContainer width="70%" height={200}>
                 <BarChart data={kpiPersonData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#555" />
                   <XAxis dataKey="name" stroke="#ccc" />
@@ -304,10 +365,22 @@ const AnalyticsManager = () => {
               </div>
             </>
           )}
-          <div className="text-sm text-gray-400 mb-4">
-          <label className="mr-2">See productivity by:</label>
+            <h3 className="text-lg font-semibold mb-4 px-6 pt-4">Estimated vs Real Hours</h3>
+            <div className="w-fill flex items-center justify-center mb-8">
+              <ResponsiveContainer width="70%" height={300}>
+                <BarChart data={hoursComparisonByDeveloper} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                  <XAxis dataKey="name" stroke="#ccc" />
+                  <YAxis stroke="#ccc" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="estimated" fill="#c54534" name="Estimated Hours" />
+                  <Bar dataKey="real" fill="#a9312c" name="Real Hours" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
 
-          </div>
+
         </div>
       </div>
     </div>
