@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Sidebar from "./components/Sidebar";
 import { ResponsiveContainer, RadialBarChart, RadialBar, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import { Bell, UserCircle, Menu } from "lucide-react";
@@ -8,6 +8,8 @@ const AnalyticsManager = () => {
   const [selectedFilter, setSelectedFilter] = useState("ALL");
   const [productivityView, setProductivityView] = useState("Equipo");
   const [selectedSprint, setSelectedSprint] = useState("Sprint1");
+  const [allTasks, setAllTasks] = useState([]);
+  
 
   const sprints = [
     { name: "Sprint1", date: "May 25, 2023", status: "Completed", progress: 100 },
@@ -17,36 +19,66 @@ const AnalyticsManager = () => {
     { name: "Sprint5", date: "Mar 15, 2024", status: "Pending", progress: 0 },
   ];
 
-  const tasksToday = [
-    { name: "Task1", sprint: "Sprint1", estimatedhours: 15, realhours: 10, status: "Pending", user: "Developer" },
-    { name: "Task2", sprint: "Sprint1", estimatedhours: 15, realhours: 10, status: "Pending", user: "Developer" },
-    { name: "Task3", sprint: "Sprint2", estimatedhours: 15, realhours: 10, status: "Pending", user: "Developer" },
-    { name: "Task4", sprint: "Sprint3", estimatedhours: 15, realhours: 10, status: "Pending", user: "Developer" },
-    { name: "Task5", sprint: "Sprint1", estimatedhours: 15, realhours: 10, status: "Done", user: "Developer" },
-  ];
+ useEffect(() => {
+    const fetchTasks = async () => {
+      const userId = localStorage.getItem("userId");
+      if (!userId) return;
 
-  const kpiTeam = [
-    { sprint: "Sprint1", hours: 120, tasks: 15 },
-    { sprint: "Sprint2", hours: 100, tasks: 10 },
-    { sprint: "Sprint3", hours: 130, tasks: 20 },
-    { sprint: "Sprint4", hours: 130, tasks: 20 },
-  ];
+      try {
+        const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
+        const data = await response.json();
 
-  const kpiPerson = [
-    { name: "Daniela Balderas", sprint: "Sprint1", hours: 40, tasks: 5 },
-    { name: "Rodrigo Aguilar", sprint: "Sprint1", hours: 20, tasks: 4 },
-    { name: "Carlos Saldaña", sprint: "Sprint2", hours: 10, tasks: 6 },
-    { name: "Dora Garcia", sprint: "Sprint1", hours: 30, tasks: 4 },
-  ];
+        const formatted = data.map((task) => ({
+          name: task.nombre,
+          sprint: `Sprint${task.idSprint}`,
+          estimatedhours: task.horasEstimadas || 0,
+          realhours: task.horasReales || 0,
+          status:
+            task.idColumna === 1 ? "Pending" :
+            task.idColumna === 2 ? "Doing" : "Done",
+          user: task.nombreEncargado || "Developer",
+        }));
 
-  const sprintTasks = tasksToday.filter(task => task.sprint === selectedSprint);
+        setAllTasks(formatted);
+      } catch (err) {
+        console.error("Error fetching tasks:", err);
+      }
+    };
+
+    fetchTasks();
+  }, []);
+
+  const sprintTasks = allTasks.filter(t => t.sprint === selectedSprint);
   const filteredTasks = selectedFilter === "ALL"
     ? sprintTasks
-    : sprintTasks.filter((task) =>
+    : sprintTasks.filter((t) =>
         selectedFilter === "Completed"
-          ? task.status === "Done"
-          : task.status === "Pending"
+          ? t.status === "Done"
+          : t.status === "Pending"
       );
+
+  const kpiTeam = sprints.map((sprint) => {
+    const sprintData = allTasks.filter(t => t.sprint === sprint.name);
+    const hours = sprintData.reduce((sum, t) => sum + t.realhours, 0);
+    const tasks = sprintData.filter(t => t.status === "Done").length;
+    return {
+      sprint: sprint.name,
+      hours,
+      tasks,
+    };
+  });
+
+  const kpiPerson = [];
+  allTasks.forEach(t => {
+    const key = `${t.user}-${t.sprint}`;
+    let entry = kpiPerson.find(e => e.name === t.user && e.sprint === t.sprint);
+    if (!entry) {
+      entry = { name: t.user, sprint: t.sprint, hours: 0, tasks: 0 };
+      kpiPerson.push(entry);
+    }
+    entry.hours += t.realhours;
+    if (t.status === "Done") entry.tasks += 1;
+  });
 
   const sprintKpiTeam = kpiTeam.find(k => k.sprint === selectedSprint);
   const sprintKpiPerson = kpiPerson.filter(k => k.sprint === selectedSprint);
@@ -65,7 +97,7 @@ const AnalyticsManager = () => {
     (sprintTasks.filter((task) => task.status === "Done").length / sprintTasks.length) * 100 || 0
   );
 
-  const sprintOptions = [...new Set(tasksToday.map(task => task.sprint))];
+  const sprintOptions = [...new Set(allTasks.map(task => task.sprint))];
 
 
   return (
@@ -140,37 +172,6 @@ const AnalyticsManager = () => {
               </tbody>
             </table>
           </div>
-
-          <div className="bg-[#2a2a2a] rounded p-4">
-            <h3 className="text-lg font-semibold mb-4">Overall Progress</h3>
-            <div className="w-full flex items-center justify-center mb-4 relative">
-              <ResponsiveContainer width="100%" height={120}>
-                <RadialBarChart
-                  innerRadius="70%"
-                  outerRadius="100%"
-                  barSize={10}
-                  data={[{ name: "Progress", value: progress, fill: "#22c55e" }]}
-                >
-                  <RadialBar
-                    minAngle={15}
-                    background
-                    clockWise
-                    dataKey="value"
-                  />
-                </RadialBarChart>
-              </ResponsiveContainer>
-              <span className="absolute text-xl font-bold text-white">{progress}%</span>
-            </div>
-            <p className="mt-2 text-sm text-gray-300">{sprintTasks.length} Total tasks</p>
-            <div className="flex justify-center gap-6 mt-2 text-sm">
-              <span className="text-green-500">{sprintTasks.filter(t => t.status === "Done").length} Completed</span>
-              <span className="text-yellow-400">{sprintTasks.filter(t => t.status === "Doing").length} Doing</span>
-              <span className="text-red-400">{sprintTasks.filter(t => t.status === "Pending").length} Pending</span>
-            </div>
-          </div>
-        </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
     <div className="bg-[#2a2a2a] rounded p-4">
         <h3 className="text-lg font-semibold mb-4">Sprint's Tasks</h3>
         <div className="flex gap-4 mb-4 text-sm text-gray-400">
@@ -220,10 +221,12 @@ const AnalyticsManager = () => {
             ))}
         </tbody>
         </table>
-    </div>
+    
+        </div>
 
-          <div className="bg-[#2a2a2a] rounded p-4 ">
-          <h3 className="text-lg font-semibold mb-4">Productivity</h3>
+    
+        <div className="bg-[#2a2a2a] rounded p-4 md:col-span-2">
+        <h3 className="text-lg font-semibold mb-4">Productivity</h3>
           <div className="text-sm text-gray-400 mb-4">
             <label className="mr-2">See productivity by:</label>
             <select
@@ -301,7 +304,10 @@ const AnalyticsManager = () => {
               </div>
             </>
           )}
-        
+          <div className="text-sm text-gray-400 mb-4">
+          <label className="mr-2">See productivity by:</label>
+
+          </div>
         </div>
       </div>
     </div>
