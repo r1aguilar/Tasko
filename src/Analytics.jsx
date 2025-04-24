@@ -12,101 +12,73 @@ const AnalyticsManager = () => {
   
 
   const sprints = [
-    { name: "Sprint1", date: "May 25, 2023", status: "Completed", progress: 100 },
-    { name: "Sprint2", date: "Jun 20, 2023", status: "Doing", progress: 75 },
-    { name: "Sprint3", date: "July 13, 2023", status: "Doing", progress: 5 },
-    { name: "Sprint4", date: "Dec 20, 2023", status: "Pending", progress: 0 },
-    { name: "Sprint5", date: "Mar 15, 2024", status: "Pending", progress: 0 },
+    { name: "Sprint1", date: "Feb 16, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint2", date: "Feb 23, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint3", date: "Mar 2, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint4", date: "Mar 9, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint21", date: "Mar 16, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint22", date: "Mar 30, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint23", date: "Apr 6, 2025", status: "Completed", progress: 100 },
+    { name: "Sprint41", date: "Apr 13, 2025", status: "Completed", progress: 100 },
+
   ];
 
+  const userMap = {
+    1: "Daniela",
+    2: "Dora",
+    3: "Carlos",
+    4: "Rodrigo"
+  };
+
+
+  
+
   useEffect(() => {
-    const useMock = false; 
-  
     const fetchTasks = async () => {
-      if (useMock) {
-        // Simular userId local
-        if (!localStorage.getItem("userId")) {
-          localStorage.setItem("userId", "mockUser123");
-        }
+      // Extraer el número del sprint seleccionado: "Sprint1" => 1
+      const sprintNumber = selectedSprint.replace("Sprint", "");
   
-        // Datos simulados
-        const mockData = [
-          {
-            nombre: "Crear base de datos",
-            idSprint: 1,
-            horasEstimadas: 4,
-            horasReales: 5,
-            idColumna: 3,
-            nombreEncargado: "Dora"
-          },
-          {
-            nombre: "Diseñar interfaz",
-            idSprint: 1,
-            horasEstimadas: 6,
-            horasReales: 6,
-            idColumna: 2,
-            nombreEncargado: "Daniela"
-          },
-          {
-            nombre: "Configurar servidor",
-            idSprint: 2,
-            horasEstimadas: 5,
-            horasReales: 4,
-            idColumna: 1,
-            nombreEncargado: "Dora"
-          }
-        ];
+      try {
+        const response = await fetch(`http://220.158.67.50/pruebas/TareasSprint/${sprintNumber}`);
+        const data = await response.json();
   
-        const formatted = mockData.map((task) => ({
+        const formatted = data.map((task) => ({
           name: task.nombre,
           sprint: `Sprint${task.idSprint}`,
-          estimatedhours: task.horasEstimadas || 0,
-          realhours: task.horasReales || 0,
+          estimatedhours: task.tiempoEstimado || 0,
+          realhours: task.tiempoReal || 0,
           status:
             task.idColumna === 1 ? "Pending" :
-            task.idColumna === 2 ? "Doing" : "Done",
-          user: task.nombreEncargado || "Developer",
+            task.idColumna === 2 ? "Doing": "Done",
+          user: userMap[task.idEncargado] || "Developer",
+          storypoints: task.storyPoints || 0
         }));
   
         setAllTasks(formatted);
-      } else {
-        const userId = localStorage.getItem("userId");
-        if (!userId) return;
-  
-        try {
-          const response = await fetch(`http://140.84.190.203/TareasUsuario/${userId}`);
-          const data = await response.json();
-  
-          const formatted = data.map((task) => ({
-            name: task.nombre,
-            sprint: `Sprint${task.idSprint}`,
-            estimatedhours: task.horasEstimadas || 0,
-            realhours: task.horasReales || 0,
-            status:
-              task.idColumna === 1 ? "Pending" :
-              task.idColumna === 2 ? "Doing" : "Done",
-            user: task.nombreEncargado || "Developer",
-          }));
-  
-          setAllTasks(formatted);
-        } catch (err) {
-          console.error("Error fetching tasks:", err);
-        }
+      } catch (err) {
+        console.error("Error fetching tasks:", err);
       }
     };
   
     fetchTasks();
-  }, []);
+  }, [selectedSprint]);
+  
   
 
   const sprintTasks = allTasks.filter(t => t.sprint === selectedSprint);
   const filteredTasks = selectedFilter === "ALL"
-    ? sprintTasks
-    : sprintTasks.filter((t) =>
-        selectedFilter === "Completed"
-          ? t.status === "Done"
-          : t.status === "Pending"
-      );
+  ? sprintTasks
+  : sprintTasks.filter((t) =>
+      selectedFilter === "Completed"
+        ? t.status === "Done"
+        : selectedFilter === "Pending"
+        ? t.status === "Pending"
+        : t.status === "Doing"
+    );
+
+
+  const totalStoryPoints = sprintTasks.reduce((sum, t) => sum + (t.storypoints || 0), 0);
+
 
   const kpiTeam = sprints.map((sprint) => {
     const sprintData = allTasks.filter(t => t.sprint === sprint.name);
@@ -160,6 +132,13 @@ const AnalyticsManager = () => {
   });
   const hoursComparisonByDeveloper = Object.values(hoursPerDeveloper);
   
+  const getSprintProgress = (sprintName) => {
+    const tasksForSprint = allTasks.filter(t => t.sprint === sprintName);
+    const total = tasksForSprint.length;
+    const done = tasksForSprint.filter(t => t.status === "Done").length;
+    return total === 0 ? 0 : Math.round((done / total) * 100);
+  };
+  
 
   return (
     <div className="flex h-screen bg-[#1a1a1a]">
@@ -189,11 +168,13 @@ const AnalyticsManager = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-[#2a2a2a] rounded p-4 text-center">
             <p className="text-sm text-gray-400">Sprints Done</p>
-            <h2 className="text-2xl font-bold">1 / 5 Sprints</h2>
+            <h2 className="text-2xl font-bold">
+              {sprints.filter(s => s.status === "Completed").length} / {sprints.length} Sprints
+            </h2>
           </div>
           <div className="bg-[#2a2a2a] rounded p-4 text-center">
             <p className="text-sm text-gray-400">Story Points</p>
-            <h2 className="text-2xl font-bold">50 / 150 SP</h2>
+            <h2 className="text-2xl font-bold">{totalStoryPoints}</h2>
           </div>
           <div className="bg-[#2a2a2a] rounded p-4 text-center">
             <p className="text-sm text-gray-400">Tasks Done</p>
@@ -223,72 +204,79 @@ const AnalyticsManager = () => {
                       <div className="bg-neutral-800 w-full h-2 rounded-full">
                         <div
                           className="bg-red-500 h-2 rounded-full"
-                          style={{ width: `${sprint.progress}%` }}
+                          style={{ width: `${getSprintProgress(sprint.name)}%` }}
                         ></div>
                       </div>
-                      <span className="text-xs text-gray-400 ml-1">{sprint.progress}%</span>
-                    </td>
+                      <span className="text-xs text-gray-400 ml-1">{getSprintProgress(sprint.name)}%</span>
+                      </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-    <div className="bg-[#2a2a2a] rounded p-4">
-        <h3 className="text-lg font-semibold mb-4">Sprint's Tasks</h3>
-        <div className="flex gap-4 mb-4 text-sm text-gray-400">
-        {['ALL', 'Completed', 'Pending'].map(filter => (
-            <span
-            key={filter}
-            className={`cursor-pointer ${selectedFilter === filter ? 'text-white font-semibold underline' : ''}`}
-            onClick={() => setSelectedFilter(filter)}
-            >
-            {filter === 'ALL' ? 'ALL ' + sprintTasks.length :
-                filter === 'Completed' ? 'Completed ' + sprintTasks.filter(t => t.status === 'Done').length :
-                'Pending ' + sprintTasks.filter(t => t.status === 'Pending').length}
-            </span>
-        ))}
-        </div>
-        <table className="w-full text-sm">
-        <thead className="text-gray-400">
-            <tr>
-            <th className="text-left py-1">Task</th>
-            <th className="text-left py-1">Estimated hours</th>
-            <th className="text-left py-1">Real hours</th>
-            <th className="text-left py-1">State</th>
-            <th className="text-left py-1">Developer</th>
-            </tr>
-        </thead>
-        <tbody>
-            {filteredTasks.map((task, i) => (
-            <tr key={i} className="border-t border-neutral-700">
-                <td className="py-2">{task.name}</td>
-                <td className="py-2">{task.estimatedhours}</td>
-                <td className="py-2">{task.realhours}</td>
-                <td className="py-2">
+          <div className="bg-[#2a2a2a] rounded p-4">
+            <h3 className="text-lg font-semibold mb-4">Sprint's Tasks</h3>
+            <div className="flex gap-4 mb-4 text-sm text-gray-400">
+              {['ALL', 'Completed', 'Doing', 'Pending'].map(filter => (
                 <span
-                    className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                    task.status === "Done"
-                        ? "bg-green-500 text-white"
-                        : task.status === "Pending"
-                        ? "bg-red-500 text-white"
-                        : "bg-yellow-400 text-black"
-                    }`}
+                  key={filter}
+                  className={`cursor-pointer ${selectedFilter === filter ? 'text-white font-semibold underline' : ''}`}
+                  onClick={() => setSelectedFilter(filter)}
                 >
-                    {task.status}
+                  {filter === 'ALL' ? 'ALL ' + sprintTasks.length :
+                  filter === 'Completed' ? 'Completed ' + sprintTasks.filter(t => t.status === 'Done').length :
+                  filter === 'Pending' ? 'Pending ' + sprintTasks.filter(t => t.status === 'Pending').length :
+                  'Doing ' + sprintTasks.filter(t => t.status === 'Doing').length}
+
                 </span>
-                </td>
-                <td className="py-2 text-sm text-gray-300">{task.user}</td>
-            </tr>
-            ))}
-        </tbody>
-        </table>
-    
-        </div>
+              ))}
+            </div>
+
+            <div className="h-72 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead className="text-gray-400">
+                  <tr>
+                    <th className="text-left py-1">Task</th>
+                    <th className="text-left py-1">Estimated hours</th>
+                    <th className="text-left py-1">Real hours</th>
+                    <th className="text-left py-1">State</th>
+                    <th className="text-left py-1">Developer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTasks.map((task, i) => (
+                    <tr key={i} className="border-t border-neutral-700">
+                      <td className="py-2">{task.name}</td>
+                      <td className="py-2">{task.estimatedhours}</td>
+                      <td className="py-2">{task.realhours}</td>
+                      <td className="py-2">
+                        <span
+                          className={`text-xs font-semibold px-2 py-1 rounded-full ${
+                            task.status === "Done"
+                              ? "bg-green-500 text-white"
+                              : task.status === "Pending"
+                              ? "bg-red-500 text-white"
+                              : "bg-yellow-400 text-black"
+                          }`}
+                        >
+                          {task.status}
+                        </span>
+                      </td>
+                      <td className="py-2 text-sm text-gray-300">{task.user}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
 
     
         <div className="bg-[#2a2a2a] rounded p-4 md:col-span-2">
         <h3 className="text-lg font-semibold mb-4">Productivity</h3>
           <div className="text-sm text-gray-400 mb-4">
+          <h2 className="text-lg font-semibold text-white mb-4 px-6 pt-4">Worked hours and Completed Tasks</h2>
+
             <label className="mr-2">See productivity by:</label>
             <select
               value={productivityView}
@@ -319,7 +307,7 @@ const AnalyticsManager = () => {
                 </tbody>
               </table>
               <div className="w-full flex items-center justify-center mb-4 relative">
-              <ResponsiveContainer width="80%" height={200}>
+              <ResponsiveContainer width="50%" height={200}>
                 <BarChart data={[sprintKpiTeam]} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#555" />
                   <XAxis dataKey="sprint" stroke="#ccc" />
@@ -365,7 +353,7 @@ const AnalyticsManager = () => {
               </div>
             </>
           )}
-            <h3 className="text-lg font-semibold mb-4 px-6 pt-4">Estimated vs Real Hours</h3>
+            <h2 className="text-lg font-semibold mb-4 px-6 pt-4">Estimated vs Real Hours</h2>
             <div className="w-fill flex items-center justify-center mb-8">
               <ResponsiveContainer width="70%" height={300}>
                 <BarChart data={hoursComparisonByDeveloper} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
