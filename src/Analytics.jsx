@@ -139,6 +139,17 @@ const AnalyticsManager = () => {
     return total === 0 ? 0 : Math.round((done / total) * 100);
   };
   
+  const getSprintStatus = (sprintName) => {
+    const tasks = allTasks.filter(t => t.sprint === sprintName);
+    if (tasks.length === 0) return "Pending";
+    const total = tasks.length;
+    const done = tasks.filter(t => t.status === "Done").length;
+  
+    if (done === 0) return "Pending";
+    if (done < total) return "Doing";
+    return "Completed";
+  };
+  
 
   return (
     <div className="flex h-screen bg-[#1a1a1a]">
@@ -199,7 +210,15 @@ const AnalyticsManager = () => {
                   <tr key={i} className="border-t border-neutral-700">
                     <td className="py-2">{sprint.name}</td>
                     <td className="py-2">{sprint.date}</td>
-                    <td className="py-2 text-yellow-400">{sprint.status}</td>
+                    <td className="py-2 text-sm font-semibold">
+                      <span className={
+                        getSprintStatus(sprint.name) === "Completed" ? "text-green-400" :
+                        getSprintStatus(sprint.name) === "Doing" ? "text-yellow-400" :
+                        "text-transparent"
+                      }>
+                        {getSprintStatus(sprint.name)}
+                      </span>
+                    </td>
                     <td className="py-2">
                       <div className="bg-neutral-800 w-full h-2 rounded-full">
                         <div
