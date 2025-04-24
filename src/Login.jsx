@@ -2,65 +2,64 @@ import { useNavigate } from "react-router-dom";
 import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, Lock } from "lucide-react";
-//import bcrypt from "bcryptjs"; 
 
 const LoginScreen = () => {
   const navigate = useNavigate();
   const [emailOrPhone, setEmailOrPhone] = useState("");
   const [password, setPassword] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  //const [isLoading, setIsLoading] = useState(false);
-  //160.34.212.100
 
   const handleLogin = async () => {
+    setErrorMsg("");
+  
     const isEmail = emailOrPhone.includes("@");
-    
-    // Lógica para determinar qué contraseña enviar
+  
     let passwordToSend;
-    if (password === 'admin') {
-      passwordToSend = '$2a$12$94Fmc41Em5pPymRMfk.wjObvXttvu/aDE/4aGl4SQ8ZCOGWzL6h3G'; // Hash para admin
-    } else if (password === '123') {
-      passwordToSend = '$2a$12$E7.M6ukX3OAN3f1WixuGru6RGoHr.QI5mAZ77Uyjs3bYOjLD5VFLG'; // Hash para developer
+    if (password === "admin") {
+      passwordToSend = "$2a$12$94Fmc41Em5pPymRMfk.wjObvXttvu/aDE/4aGl4SQ8ZCOGWzL6h3G";
+    } else if (password === "123") {
+      passwordToSend = "$2a$12$E7.M6ukX3OAN3f1WixuGru6RGoHr.QI5mAZ77Uyjs3bYOjLD5VFLG";
     } else {
-      passwordToSend = password; // Para otros casos (si existen)
+      passwordToSend = password;
     }
-
-    const url = isEmail
-      ? `http://160.34.212.100/pruebas/login/email/${encodeURIComponent(emailOrPhone)}/${encodeURIComponent(passwordToSend)}`
-      : `http://160.34.212.100/pruebas/login/${encodeURIComponent(emailOrPhone)}/${encodeURIComponent(passwordToSend)}`;
-
+  
     try {
-      const response = await fetch(url);
-      console.log("🌐 Llamando a:", url);
-
-      if (!response.ok) {
-        console.log("❌ Usuario no encontrado");
-        setErrorMsg("Usuario o contraseña incorrectos");
-        return;
+      const response = await fetch("http://220.158.67.50/pruebasUser/login/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify({
+          correo: emailOrPhone,
+          password: passwordToSend
+        })
+      });
+  
+      const text = await response.text();
+      if (!text.trim()) {
+        throw new Error("Respuesta vacía del servidor");
       }
-
-      const data = await response.json();
-      console.log("📦 Datos recibidos:", data);
-
-      // Redirecciones según tipo de usuario
-      if (data.manager === false) {
-        localStorage.setItem("userId", data.id);
-        console.log("🧑‍💻 Developer → /dashdev");
-        navigate("/dashdev");
-      } else if (data.manager === true) {
-        localStorage.setItem("userId", data.id);
-        console.log("👨‍💼 Admin/Manager → /analytics");
-        navigate("/analytics");
-      } else {
-        console.log("🚫 Usuario sin permisos");
-        setErrorMsg("No tienes acceso permitido");
+      const data = JSON.parse(text);
+      
+      console.log("📦 JSON recibido:", data);
+      
+      if (!data.id_usuario || typeof data.manager === "undefined") {
+        throw new Error("Datos incompletos del servidor");
       }
-
+      
+      localStorage.setItem("userId", data.id);
+      localStorage.setItem("userData", JSON.stringify(data));
+      localStorage.setItem("isManager", data.manager);
+      
+      navigate(data.manager ? "/analytics" : "/dashdev");
+  
     } catch (error) {
-      console.error("💥 Error conectando con backend:", error);
-      setErrorMsg("Error del servidor. Intenta nuevamente");
+      console.error("💥 Error en login:", error);
+      setErrorMsg(error.message);
     }
   };
+  
 
   return (
     <motion.div
@@ -105,7 +104,7 @@ const LoginScreen = () => {
           </div>
 
           <button onClick={handleLogin}
-            className="w-full py-2 bg-blue-600 rounded-md font-semibold hover:bg-blue-700 transition text-sm sm:text-base">
+            className="w-full py-2 bg-red-600 rounded-md font-semibold hover:bg-blue-700 transition text-sm sm:text-base">
             LOGIN
           </button>
         </div>
@@ -121,7 +120,7 @@ const LoginScreen = () => {
 
         <p className="text-center text-sm text-gray-400 mt-6">
           Don’t have an account?{" "}
-          <a href="/registro" className="text-blue-500 hover:underline">
+          <a href="/registro" className="text-red-500 hover:underline">
             Sign Up
           </a>
         </p>
